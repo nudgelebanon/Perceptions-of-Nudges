@@ -1,0 +1,763 @@
+---
+title: "Perception of Nudges Analysis"
+author: "Mariam Abdelnabi"
+date: '2022-10-19'
+output: pdf_document
+---
+
+```{r}
+library(tidyverse)
+library(emmeans)
+library(afex)
+library(ggplot2)
+library(cowplot)
+library(readxl)
+library(foreign)
+library(MASS)
+library(Hmisc)
+library(reshape2)
+logit2prob <- function(logit){
+  odds <- exp(logit)
+  prob <- odds / (1 + odds)
+  return(prob)
+}
+```
+
+### Cleaning Data
+
+```{r}
+perc_nudges <- Perception_of_Nudges_Covid_Dataset
+df_all <- read_excel("all_countries.xlsx")
+df_kenya <- read_excel("kenya.xlsx")
+
+df_arabkn <- read_excel("all_countries.xlsx")
+
+df_qatar <- read_excel("qatar.xlsx")
+```
+
+```{r}
+perc_nudges <- perc_nudges %>% 
+  dplyr::select(c(RespondentID,nationality,Locals,sex,age,education,occupation,speciality,income,marital_status,children,height,weight,chronic_illness,`Self Health`,`Covid-19 Concern`,PCR_times,positive_PCR,family_PCR,`Positive Family Dummy`,`GPS Tracking`,`Q2 dummy`,`Floor Markers`,`Public Shaming`,`Park Squares`,`Publish Causes of Infection`,`Elderly Letters`,`F&V Proximity`,`Plastic Cutlery`,`Charitable Donations`,`Food Waste`,`Cigarette Butts`,`Knowledge Sharing`,`Physical Education`,`Utility Bills`,`Covid-19 Concern`,Country,BMI,Condition))
+```
+
+```{r}
+#factorizing the within-level variables into the
+#two factor levels each has
+perc_nudges <- perc_nudges %>% 
+  mutate(nationality=factor(nationality,levels=c("Afghanistan","Algeria","Australia","Austria",
+                                                 "Bahrain","Bangladesh","Brazil","Canada","Comoros",
+                                                 "Cyprus","Egypt","Eritrea","France",
+                                                 "Germany","Holy See","India",
+                                                 "Indonesia","Iran (Islamic Republic of",
+                                                 "Iraq","Ireland","Jordan","Kuwait",
+                                                 "Lebanon","Liberia","Libya",
+                                                 "Monaco","Morocco","New Zealand",
+                                                 "Nigeria","Oman","Pakistan","Palestine",
+                                                 "Philippines","Poland","Portugal",
+                                                 "Russian Federation","Saudi Arabia","Somalia",
+                                                 "South Africa","Sri Lanka","Sudan","Syrian Arab Republic","Tunisia","Turkey","Ukraine","United Arab Emirates","United Kingdom of Great Britain","United Republic of Tanzania","United States of America","Uzbekistan","Yemen","Zimbabwe")))
+```
+
+```{r}
+#rename arabic answers to english
+perc_nudges[perc_nudges == "أنثى"] <- "Female"
+perc_nudges[perc_nudges == "ذكر"] <- "Male"
+
+perc_nudges[perc_nudges == "تعليم الثانوي"] <- "Secondary education"
+perc_nudges[perc_nudges == "درجة البكالوريوس"] <- "Undergraduate degree"
+perc_nudges[perc_nudges == "درجة الدكتوراه"] <- "Doctoral degree"
+perc_nudges[perc_nudges == "درجة الماجستير"] <- "Graduate degree"
+perc_nudges[perc_nudges == "مؤهلات مهنية"] <- "Professional qualification"
+perc_nudges[perc_nudges == "لا مؤهلات رسمية"] <- "No professional qualification"
+
+perc_nudges[perc_nudges=="Student"] <- "student"
+perc_nudges[perc_nudges=="Married"] <- "married"
+perc_nudges[perc_nudges=="Divorced"] <- "divorced"
+perc_nudges[perc_nudges=="Single"] <- "single"
+perc_nudges[perc_nudges=="Widowed"] <- "widowed"
+```
+
+```{r}
+#continuing factorisation
+perc_nudges <- perc_nudges %>% 
+  mutate(sex=factor(sex,levels=c("Female","Male")),
+         education=factor(education,levels=c("Secondary education","Undergraduate degree","Graduate degree","Doctoral degree","Professional qualification","No professional qualification")),
+         occupation=factor(occupation,levels=c("Academic Staff","Admin","Administrative Staff","faculty","student")),
+         income=factor(income,levels=c("low","middle","high")),
+         marital_status=factor(marital_status,levels=c("divorced","married","single","widowed")),
+         positive_PCR=factor(positive_PCR,levels=c("No","Yes")),
+         family_PCR=factor(family_PCR,levels=c("No","Yes")))
+```
+
+```{r}
+children <- read_excel("children.xlsx")
+perc_nudges <- cbind(perc_nudges,children)
+#dropping non-numeric children variable
+perc_nudges <- perc_nudges[,-11]
+```
+
+```{r}
+df_all <- df_all %>% 
+  mutate(country=factor(country,levels=c("AE","EG","LB","SA","KN")))
+
+perc_nudges <- perc_nudges %>% 
+  mutate(Condition=factor(Condition,levels=c(0,1),labels=c("control","treatment")))
+
+df_all <- df_all %>% 
+  mutate(group=factor(group,levels=c("control","treatment")))
+
+df_arabkn <- df_arabkn %>% 
+  mutate(country=factor(country,levels=c("arab","KN")))
+
+
+df_arabkn[df_arabkn=="SA"] <- "arab"
+df_arabkn[df_arabkn=="LB"] <- "arab"
+df_arabkn[df_arabkn=="EG"] <- "arab"
+df_arabkn[df_arabkn=="AE"] <- "arab"
+df_all <- subset(df_all, !country == "KN")
+```
+
+```{r}
+### COVID
+  ### Non intrusive
+names(perc_nudges)[names(perc_nudges) == "family_PCR"] <- "pcrfam"
+names(perc_nudges)[names(perc_nudges) == "positive_PCR"] <- "pcrself"
+names(perc_nudges)[names(perc_nudges) == "Q2 dummy"] <- "billboards"
+names(perc_nudges)[names(perc_nudges) == "Floor Markers"] <- "markers"
+names(perc_nudges)[names(perc_nudges) == "Park Squares"] <- "squares"
+names(perc_nudges)[names(perc_nudges) == "Publish Causes of Infection"] <- "infection"
+names(perc_nudges)[names(perc_nudges) == "Elderly Letters"] <- "letters"
+names(perc_nudges)[names(perc_nudges) == "F&V Proximity"] <- "proximity"
+
+### COVID
+  ### Intrusive
+names(perc_nudges)[names(perc_nudges) == "Public Shaming"] <- "shaming"
+names(perc_nudges)[names(perc_nudges) == "GPS Tracking"] <- "gps"
+
+
+### ENVIRONMENT
+names(perc_nudges)[names(perc_nudges) == "Plastic Cutlery"] <- "plastic"
+names(perc_nudges)[names(perc_nudges) == "Food Waste"] <- "food"
+names(perc_nudges)[names(perc_nudges) == "Cigarette Butts"] <- "cigarette"
+
+### MONEY
+names(perc_nudges)[names(perc_nudges) == "Charitable Donations"] <- "charity"
+names(perc_nudges)[names(perc_nudges) == "Utility Bills"] <- "bills"
+
+### KNOWLEDGE
+names(perc_nudges)[names(perc_nudges) == "Knowledge Sharing"] <- "knowledge"
+names(perc_nudges)[names(perc_nudges) == "Physical Education"] <- "PE"
+
+
+names(df_all)[names(df_all) == "infections"] <- "infection"
+```
+
+```{r}
+perc_nudges <- perc_nudges %>% 
+  mutate(billboards=factor(billboards,levels=c(0,1),labels=c("disapprove","approve")),
+         markers=factor(markers,levels=c(0,1),labels=c("disapprove","approve")),
+         squares=factor(squares,levels=c(0,1),labels=c("disapprove","approve")),
+         infection=factor(infection,levels=c(0,1),labels=c("disapprove","approve")),
+         letters=factor(letters,levels=c(0,1),labels=c("disapprove","approve")),
+         proximity=factor(proximity,levels=c(0,1),labels=c("disapprove","approve")),
+         shaming=factor(shaming,levels=c(0,1),labels=c("disapprove","approve")),
+         gps=factor(gps,levels=c(0,1),labels=c("disapprove","approve")),
+         plastic=factor(plastic,levels=c(0,1),labels=c("disapprove","approve")),
+         food=factor(food,levels=c(0,1),labels=c("disapprove","approve")),
+         cigarette=factor(cigarette,levels=c(0,1),labels=c("disapprove","approve")),
+         charity=factor(charity,levels=c(0,1),labels=c("disapprove","approve")),
+         bills=factor(bills,levels=c(0,1),labels=c("disapprove","approve")),
+         knowledge=factor(knowledge,levels=c(0,1),labels=c("disapprove","approve")),
+         PE=factor(PE,levels=c(0,1),labels=c("disapprove","approve")))
+
+df_all <- df_all %>% 
+  mutate(billboards=factor(billboards,levels=c("disapprove","approve")),
+         markers=factor(markers,levels=c("disapprove","approve")),
+         squares=factor(squares,levels=c("disapprove","approve")),
+         infections=factor(infections,levels=c("disapprove","approve")),
+         letters=factor(letters,levels=c("disapprove","approve")),
+         proximity=factor(proximity,levels=c("disapprove","approve")),
+         shaming=factor(shaming,levels=c("disapprove","approve")),
+         gps=factor(gps,levels=c("disapprove","approve")),
+         plastic=factor(plastic,levels=c("disapprove","approve")),
+         food=factor(food,levels=c("disapprove","approve")),
+         cigarette=factor(cigarette,levels=c("disapprove","approve")),
+         charity=factor(charity,levels=c("disapprove","approve")),
+         bills=factor(bills,levels=c("disapprove","approve")),
+         knowledge=factor(knowledge,levels=c("disapprove","approve")),
+         PE=factor(PE,levels=c("disapprove","approve")))
+
+df_qatar <- df_qatar %>% 
+  mutate(tissue=factor(tissue,levels=c("disapprove","approve")),
+         grievances=factor(grievances,levels=c("disapprove","approve")),
+         plastic=factor(plastic,levels=c("disapprove","approve")),
+         elecpay=factor(elecpay,levels=c("disapprove","approve")),
+         charity=factor(charity,levels=c("disapprove","approve")),
+         food=factor(food,levels=c("disapprove","approve")),
+         bills=factor(bills,levels=c("disapprove","approve")),
+         litter=factor(litter,levels=c("disapprove","approve")),
+         minorities=factor(minorities,levels=c("disapprove","approve")),
+         training=factor(training,levels=c("disapprove","approve")),
+         cigarette=factor(cigarette,levels=c("disapprove","approve")),
+         footwear=factor(footwear,levels=c("disapprove","approve")),
+         support=factor(support,levels=c("disapprove","approve")),
+         knowledge=factor(knowledge,levels=c("disapprove","approve")),
+         PE=factor(PE,levels=c("disapprove","approve")))
+```
+
+
+```{r}
+df_all %>%
+        group_by(plastic) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(food) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(charity) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(bills) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(PE) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(cigarette) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(knowledge) %>% 
+        summarise(nsize=n())
+```
+
+
+```{r}
+perc_nudges <- perc_nudges[,-c(2,3,8,11:16,36)]
+```
+
+================================================================================
+================================================================================
+
+### Counts
+
+```{r}
+df_all %>%
+        group_by(gps) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(billboards) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(markers) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(shaming) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(squares) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(infections) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(letters) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(proximity) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(plastic,group,country) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(charity) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(food,group,country) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(cigarette,group,country) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(knowledge) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(PE) %>% 
+        summarise(nsize=n())
+
+df_all %>%
+        group_by(bills) %>% 
+        summarise(nsize=n())
+```
+
+```{r}
+perc_nudges %>%
+        group_by(Country,gps) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,billboards) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,markers) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,shaming) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,squares) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,infection) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,letters) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,proximity) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,plastic) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,charity) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,food) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,cigarette) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,knowledge) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,PE) %>% 
+        summarise(nsize=n())
+
+perc_nudges %>%
+        group_by(Country,bills) %>% 
+        summarise(nsize=n())
+```
+
+```{r}
+perc_nudges %>%
+        group_by(Country,shaming) %>% 
+        summarise(nsize=n())
+```
+
+================================================================================
+================================================================================
+
+### TREATMENT-BASED COMPARISONS COVID NUDGES
+
+```{r}
+df_debiasing <- subset(perc_nudges,perc_nudges$Country!="LB")
+df_forecasting <- subset(perc_nudges,perc_nudges$Country=="LB")
+```
+
+================================================================================
+================================================================================
+
+#### DEBIASING COVID NUDGES
+
+```{r}
+chisq.test(df_debiasing$Condition,df_debiasing$proximity)
+
+chisq.test(df_debiasing$Condition,df_debiasing$gps)
+chisq.test(df_debiasing$Condition,df_debiasing$billboards)
+chisq.test(df_debiasing$Condition,df_debiasing$markers)
+chisq.test(df_debiasing$Condition,df_debiasing$shaming)
+chisq.test(df_debiasing$Condition,df_debiasing$squares)
+chisq.test(df_debiasing$Condition,df_debiasing$infection)
+chisq.test(df_debiasing$Condition,df_debiasing$letters)
+```
+
+```{r}
+summary(glm(proximity ~ Condition,data = df_debiasing,family = "binomial"))
+logit2prob(coef(s1))
+
+summary(glm(gps ~ Condition,data = df_debiasing,family = "binomial"))
+s1 <- summary(glm(billboards ~ Condition,data = df_debiasing,family = "binomial"))
+summary(glm(markers ~ Condition,data = df_debiasing,family = "binomial"))
+summary(glm(shaming ~ Condition,data = df_debiasing,family = "binomial"))
+summary(glm(squares ~ Condition,data = df_debiasing,family = "binomial"))
+summary(glm(infection ~ Condition,data = df_debiasing,family = "binomial"))
+summary(glm(letters ~ Condition,data = df_debiasing,family = "binomial"))
+```
+
+```{r}
+summary(glm(proximity ~ Country,data = df_debiasing,family = "binomial"))
+s1 <- summary(glm(gps ~ Country,data = df_debiasing,family = "binomial"))
+logit2prob(coef(s1))
+
+summary(glm(billboards ~ Country,data = df_debiasing,family = "binomial"))
+summary(glm(markers ~ Country,data = df_debiasing,family = "binomial"))
+summary(glm(shaming ~ Country,data = df_debiasing,family = "binomial"))
+summary(glm(squares ~ Country,data = df_debiasing,family = "binomial"))
+summary(glm(infection ~ Country,data = df_debiasing,family = "binomial"))
+s1 <- summary(glm(letters ~ Country,data = df_debiasing,family = "binomial"))
+```
+
+
+
+#### SUPER FORECASTING COVID NUDGES
+
+```{r}
+chisq.test(df_forecasting$Condition,df_forecasting$gps)
+chisq.test(df_forecasting$Condition,df_forecasting$squares)
+
+chisq.test(df_forecasting$Condition,df_forecasting$billboards)
+chisq.test(df_forecasting$Condition,df_forecasting$markers)
+chisq.test(df_forecasting$Condition,df_forecasting$shaming)
+chisq.test(df_forecasting$Condition,df_forecasting$infection)
+chisq.test(df_forecasting$Condition,df_forecasting$letters)
+chisq.test(df_forecasting$Condition,df_forecasting$proximity)
+```
+
+```{r}
+summary(glm(gps ~ country,data = forecasting,family = "binomial"))
+summary(glm(squares ~ country,data = forecasting,family = "binomial"))
+summary(glm(billboards ~ country,data = forecasting,family = "binomial"))
+summary(glm(markers ~ country,data = forecasting,family = "binomial"))
+summary(glm(shaming ~ country,data = forecasting,family = "binomial"))
+summary(glm(infection ~ country,data = forecasting,family = "binomial"))
+summary(glm(letters ~ country,data = forecasting,family = "binomial"))
+summary(glm(proximity ~ country,data = forecasting,family = "binomial"))
+```
+
+================================================================================
+================================================================================
+
+#### DEBIASING NON-COVID NUDGES
+
+```{r}
+chisq.test(df_debiasing$Condition,df_debiasing$plastic)
+chisq.test(df_debiasing$Condition,df_debiasing$charity)
+chisq.test(df_debiasing$Condition,df_debiasing$food)
+chisq.test(df_debiasing$Condition,df_debiasing$cigarette)
+chisq.test(df_debiasing$Condition,df_debiasing$knowledge)
+chisq.test(df_debiasing$Condition,df_debiasing$PE)
+chisq.test(df_debiasing$Condition,df_debiasing$bills)
+```
+
+```{r}
+summary(glm(bills ~ Country,data = df_debiasing,family = "binomial"))
+summary(glm(charity ~ Country,data = df_debiasing,family = "binomial"))
+s1 <- summary(glm(cigarette ~ Country,data = df_debiasing,family = "binomial"))
+s1 <- summary(glm(knowledge ~ Country,data = df_debiasing,family = "binomial"))
+
+logit2prob(coef(s1))
+
+
+summary(glm(food ~ Country,data = df_debiasing,family = "binomial"))
+summary(glm(plastic ~ Country,data = df_debiasing,family = "binomial"))
+summary(glm(PE ~ Country,data = df_debiasing,family = "binomial"))
+```
+
+
+#### SUPER FORECASTING NON-COVID NUDGES
+
+```{r}
+chisq.test(df_forecasting$Condition,df_forecasting$bills)
+
+chisq.test(df_forecasting$Condition,df_forecasting$plastic)
+chisq.test(df_forecasting$Condition,df_forecasting$charity)
+chisq.test(df_forecasting$Condition,df_forecasting$food)
+chisq.test(df_forecasting$Condition,df_forecasting$cigarette)
+chisq.test(df_forecasting$Condition,df_forecasting$knowledge)
+chisq.test(df_forecasting$Condition,df_forecasting$PE)
+```
+
+```{r}
+s1 <- summary(glm(bills ~ Condition,data = df_forecasting,family = "binomial"))
+logit2prob(coef(s1))
+
+summary(glm(plastic ~ Condition,data = df_forecasting,family = "binomial"))
+summary(glm(charity ~ Condition,data = df_forecasting,family = "binomial"))
+summary(glm(food ~ Condition,data = df_forecasting,family = "binomial"))
+summary(glm(cigarette ~ Condition,data = df_forecasting,family = "binomial"))
+summary(glm(knowledge ~ Condition,data = df_forecasting,family = "binomial"))
+summary(glm(PE ~ Condition,data = df_forecasting,family = "binomial"))
+```
+
+================================================================================
+================================================================================
+
+### KENYA COVID NUDGES
+
+```{r}
+chisq.test(df_kenya$group,df_kenya$gps)
+chisq.test(df_kenya$group,df_kenya$billboards)
+chisq.test(df_kenya$group,df_kenya$markers)
+chisq.test(df_kenya$group,df_kenya$shaming)
+chisq.test(df_kenya$group,df_kenya$infection)
+chisq.test(df_kenya$group,df_kenya$squares)
+chisq.test(df_kenya$group,df_kenya$letters)
+chisq.test(df_kenya$group,df_kenya$proximity)
+```
+
+### KENYA NON-COVID NUDGES
+
+```{r}
+chisq.test(df_kenya$group,df_kenya$plastic)
+chisq.test(df_kenya$group,df_kenya$charity)
+chisq.test(df_kenya$group,df_kenya$food)
+chisq.test(df_kenya$group,df_kenya$cigarette)
+chisq.test(df_kenya$group,df_kenya$knowledge)
+chisq.test(df_kenya$group,df_kenya$PE)
+chisq.test(df_kenya$group,df_kenya$bills)
+```
+
+================================================================================
+================================================================================
+
+### CONTROL COMPARISONS
+
+```{r}
+nudges_cntrl <- subset(perc_nudges,perc_nudges$Condition=="control")
+all_cntrl <- subset(df_all,df_all$group=="control")
+```
+
+#### ARAB COUNTRY COMPARISON COVID NUDGES
+#### Research Paper
+
+
+#### ARAB COUNTRY COMPARISON NON-COVID NUDGES
+
+```{r}
+chisq.test(nudges_cntrl$Country,nudges_cntrl$charity)
+chisq.test(nudges_cntrl$Country,nudges_cntrl$knowledge)
+
+chisq.test(nudges_cntrl$Country,nudges_cntrl$plastic)
+chisq.test(nudges_cntrl$Country,nudges_cntrl$food)
+chisq.test(nudges_cntrl$Country,nudges_cntrl$cigarette)
+chisq.test(nudges_cntrl$Country,nudges_cntrl$PE)
+chisq.test(nudges_cntrl$Country,nudges_cntrl$bills)
+```
+
+```{r}
+s1 <- summary(glm(charity ~ Country,data = nudges_cntrl,family = "binomial"))
+s1 <-summary(glm(knowledge ~ Country,data = nudges_cntrl,family = "binomial"))
+
+logit2prob(coef(s1))
+
+
+summary(glm(plastic ~ Country,data = nudges_cntrl,family = "binomial"))
+summary(glm(food ~ Country,data = nudges_cntrl,family = "binomial"))
+summary(glm(cigarette ~ Country,data = nudges_cntrl,family = "binomial"))
+summary(glm(PE ~ Country,data = nudges_cntrl,family = "binomial"))
+summary(glm(bills ~ Country,data = nudges_cntrl,family = "binomial"))
+```
+
+================================================================================
+================================================================================
+
+#### KENYA AND ARAB COUNTRIES COMPARISON COVID NUDGES
+
+```{r}
+df_arabkn_cntrl <- subset(df_arabkn,df_arabkn$group=="control")
+```
+
+
+```{r}
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$gps)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$billboards)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$markers)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$shaming)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$infections)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$proximity)
+
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$letters)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$squares)
+```
+
+
+```{r}
+s1 <-summary(glm(gps ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <-summary(glm(billboards ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <-summary(glm(markers ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <-summary(glm(shaming ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <-summary(glm(infections ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <-summary(glm(proximity ~ country,data = df_arabkn_cntrl,family = "binomial"))
+
+logit2prob(coef(s1))
+
+
+summary(glm(letters ~ country,data = df_arabkn_cntrl,family = "binomial"))
+summary(glm(squares ~ country,data = df_arabkn_cntrl,family = "binomial"))
+```
+
+#### KENYA AND ARAB COUNTRIES COMPARISON NON-COVID NUDGES
+
+```{r}
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$plastic)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$charity)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$food)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$cigarette)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$knowledge)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$PE)
+chisq.test(df_arabkn_cntrl$country,df_arabkn_cntrl$bills)
+```
+
+
+```{r}
+s1 <- summary(glm(plastic ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <- summary(glm(food ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <- summary(glm(charity ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <- summary(glm(cigarette ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <- summary(glm(knowledge ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <- summary(glm(PE ~ country,data = df_arabkn_cntrl,family = "binomial"))
+s1 <- summary(glm(bills ~ country,data = df_arabkn_cntrl,family = "binomial"))
+
+logit2prob(coef(s1))
+```
+
+
+================================================================================
+================================================================================
+
+#### DEBIASING VS SUPER FORECASTING COVID NUDGES
+
+```{r}
+deb_for <- subset(df_all,df_all$group=="treatment")
+
+levels(deb_for$country)[levels(deb_for$country)=="SA"] <- "debiasing"
+levels(deb_for$country)[levels(deb_for$country)=="EG"] <- "debiasing"
+levels(deb_for$country)[levels(deb_for$country)=="AE"] <- "debiasing"
+levels(deb_for$country)[levels(deb_for$country)=="LB"] <- "forecasting"
+levels(deb_for$country)[levels(deb_for$country)=="KN"] <- "forecasting"
+
+
+deb_for <- deb_for %>% 
+  mutate(country=factor(country,levels=c("debiasing","forecasting")))
+```
+
+```{r}
+chisq.test(deb_for$country,deb_for$shaming)
+chisq.test(deb_for$country,deb_for$squares)
+
+chisq.test(deb_for$country,deb_for$gps)
+chisq.test(deb_for$country,deb_for$billboards)
+chisq.test(deb_for$country,deb_for$markers)
+chisq.test(deb_for$country,deb_for$infection)
+chisq.test(deb_for$country,deb_for$proximity)
+chisq.test(deb_for$country,deb_for$letters)
+```
+
+```{r}
+s1 <- summary(glm(shaming ~ country,data = deb_for,family = "binomial"))
+s1 <-summary(glm(squares ~ country,data = deb_for,family = "binomial"))
+s1 <-summary(glm(markers ~ country,data = deb_for,family = "binomial"))
+s1 <-summary(glm(proximity ~ country,data = deb_for,family = "binomial"))
+
+logit2prob(coef(s1))
+
+summary(glm(gps ~ country,data = deb_for,family = "binomial"))
+summary(glm(billboards ~ country,data = deb_for,family = "binomial"))
+summary(glm(infection ~ country,data = deb_for,family = "binomial"))
+summary(glm(letters ~ country,data = deb_for,family = "binomial"))
+```
+
+
+#### DEBIASING VS SUPER FORECASTING NON-COVID NUDGES
+
+```{r}
+chisq.test(deb_for$country,deb_for$plastic)
+chisq.test(deb_for$country,deb_for$charity)
+
+chisq.test(deb_for$country,deb_for$food)
+chisq.test(deb_for$country,deb_for$cigarette)
+chisq.test(deb_for$country,deb_for$knowledge)
+chisq.test(deb_for$country,deb_for$PE)
+chisq.test(deb_for$country,deb_for$bills)
+```
+
+```{r}
+s1 <- summary(glm(plastic ~ country,data = deb_for,family = "binomial"))
+s1 <- summary(glm(charity ~ country,data = deb_for,family = "binomial"))
+s1 <- summary(glm(knowledge ~ country,data = deb_for,family = "binomial"))
+s1 <- summary(glm(cigarette ~ country,data = deb_for,family = "binomial"))
+s1 <- summary(glm(PE ~ country,data = deb_for,family = "binomial"))
+s1 <- summary(glm(bills ~ country,data = deb_for,family = "binomial"))
+
+logit2prob(coef(s1))
+
+summary(glm(food ~ country,data = deb_for,family = "binomial"))
+```
+
+
+================================================================================
+================================================================================
+
+#### KENYA vs LEBANON SUPER FORECASTING
+
+```{r}
+forecasting <- subset(df_all,df_all$country=="LB"|df_all$country=="KN")
+
+forecasting <- forecasting %>% 
+  mutate(group=factor(group,levels=c("contorl","treatment")))
+```
+
+
+#### KENYA vs LEBANON SUPER FORECASTING COVID NUDGES
+
+```{r}
+s1 <- summary(glm(squares ~ group,data = forecasting,family = "binomial"))
+
+logit2prob(coef(s1))
+
+summary(glm(shaming ~ group,data = forecasting,family = "binomial"))
+summary(glm(gps ~ group,data = forecasting,family = "binomial"))
+summary(glm(billboards ~ group,data = forecasting,family = "binomial"))
+summary(glm(markers ~ group,data = forecasting,family = "binomial"))
+summary(glm(infection ~ group,data = forecasting,family = "binomial"))
+summary(glm(proximity ~ group,data = forecasting,family = "binomial"))
+summary(glm(letters ~ group,data = forecasting,family = "binomial"))
+```
+
+
+#### KENYA vs LEBANON SUPER FORECASTING NON-COVID NUDGES
+
+```{r}
+summary(glm(plastic ~ group,data = forecasting,family = "binomial"))
+summary(glm(knowledge ~ group,data = forecasting,family = "binomial"))
+summary(glm(food ~ group,data = forecasting,family = "binomial"))
+summary(glm(cigarette ~ group,data = forecasting,family = "binomial"))
+summary(glm(PE ~ group,data = forecasting,family = "binomial"))
+summary(glm(bills ~ group,data = forecasting,family = "binomial"))
+summary(glm(charity ~ group,data = forecasting,family = "binomial"))
+```
+
+
+
